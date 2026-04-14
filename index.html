@@ -211,6 +211,7 @@
     .line.header-line { color: var(--amber); text-shadow: 0 0 8px rgba(255,180,0,0.3); }
     .line.blank { min-height: 1em; }
     .line.file-content { color: #c8ffd4; }
+    .line.notification { color: var(--amber); text-shadow: 0 0 6px rgba(255,180,0,0.5); }
 
     #input-row {
       display: flex;
@@ -361,19 +362,17 @@ const promptLabel = document.getElementById('prompt-label');
 const imagePanel = document.getElementById('image-panel');
 const credBadge = document.getElementById('cred-badge');
 
-// ─── CLOCK: set initial time immediately ──────────────────────────────────
+// ─── CLOCK (shows real system time immediately) ───────────────────────────
 function updateClock() {
   const now = new Date();
   const t = [now.getHours(), now.getMinutes(), now.getSeconds()]
     .map(n => String(n).padStart(2,'0')).join(':');
   document.getElementById('clock').textContent = t;
 }
-// Call once right away to replace the placeholder
 updateClock();
-// Then update every second
 setInterval(updateClock, 1000);
 
-// ─── HELPER FUNCTIONS (unchanged) ─────────────────────────────────────────
+// ─── HELPER FUNCTIONS ─────────────────────────────────────────────────────
 function print(text, cls = '') {
   const div = document.createElement('div');
   div.className = 'line' + (cls ? ' ' + cls : '');
@@ -481,7 +480,7 @@ function parseFileContent(content) {
   return { imageUrls, textLines };
 }
 
-// ─── FILE LOADER ──────────────────────────────────────────────────────────
+// ─── FILE LOADER (general) ─────────────────────────────────────────────────
 async function loadFileContent(filename) {
   try {
     const response = await fetch(`${currentFolder}/${filename}`);
@@ -495,7 +494,35 @@ async function loadFileContent(filename) {
   }
 }
 
-// ─── COMMANDS (unchanged) ─────────────────────────────────────────────────
+// ─── NOTIFICATION SYSTEM ───────────────────────────────────────────────────
+async function checkNotifications(folder) {
+  try {
+    const response = await fetch(`${folder}/NOTIFICATIONS.txt`);
+    if (!response.ok) return { count: 0, lines: [] };
+    const content = await response.text();
+    const lines = content.split(/\r?\n/);
+    const newNotifications = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (line.startsWith('!')) {
+        newNotifications.push({ index: i+1, text: line.substring(1).trim() });
+      }
+    }
+    return { count: newNotifications.length, notifications: newNotifications };
+  } catch (e) {
+    return { count: 0, notifications: [] };
+  }
+}
+
+async function notifyUserOnLogin() {
+  const { count, notifications } = await checkNotifications(currentFolder);
+  if (count > 0) {
+    print(`[!] You have ${count} new notification(s). Type NOTIFY to read them.`, 'notification');
+    printBlank();
+  }
+}
+
+// ─── COMMANDS (added NOTIFY) ──────────────────────────────────────────────
 const commands = {
   help: async () => {
     printBlank();
@@ -505,6 +532,7 @@ const commands = {
     print('  DIR               — List files in current folder', 'info');
     print('  READ <file>       — Display a file', 'info');
     print('  TYPE <file>       — Alias for READ', 'info');
+    print('  NOTIFY            — Display unread notifications', 'info');
     print('  CLS               — Clear screen', 'info');
     print('  ECHO <text>       — Print text', 'info');
     print('  VER               — Version info (loads VER.txt)', 'info');
@@ -607,6 +635,25 @@ Multi‑user credential system
     }
   },
 
+  // New NOTIFY command
+  notify: async () => {
+    const { count, notifications } = await checkNotifications(currentFolder);
+    if (count === 0) {
+      print('No unread notifications.', 'system');
+      printBlank();
+      return;
+    }
+    printBlank();
+    print('UNREAD NOTIFICATIONS', 'header-line');
+    printDivider('─');
+    for (const n of notifications) {
+      print(`[${n.index}] ${n.text}`, 'notification');
+    }
+    printDivider('─');
+    print(`Total: ${count} unread. Remove the "!" prefix from NOTIFICATIONS.txt to mark as read.`, 'system');
+    printBlank();
+  },
+
   login: async (args) => {
     if (!args || args.length === 0) {
       print('Syntax: LOGIN <code>', 'error');
@@ -621,6 +668,8 @@ Multi‑user credential system
         credBadge.textContent = `🔑 ${code}`;
         print(`Access granted. Now in folder: ${currentFolder}`, 'system');
         printBlank();
+        // Check notifications for the new folder
+        await notifyUserOnLogin();
       } else {
         print(`Error: Folder '${newFolder}' has no file list.`, 'error');
       }
@@ -715,6 +764,8 @@ async function boot() {
   input.disabled = false;
   input.focus();
 
+  // Check for notifications immediately after login (before boot messages? Better after)
+  // We'll call it after the welcome message.
   const logoText = await fetchExternalFile('LOGO.txt', FALLBACK_LOGO);
   const osText = await fetchExternalFile('OS.txt', FALLBACK_OS);
 
@@ -742,6 +793,9 @@ async function boot() {
   print(`  WELCOME, ${currentFolder}.`, 'info');
   print('  Type HELP for available commands.', 'system');
   printBlank();
+
+  // Finally, show any notifications
+  await notifyUserOnLogin();
 }
 
 // ─── INPUT HANDLER (unchanged) ────────────────────────────────────────────
