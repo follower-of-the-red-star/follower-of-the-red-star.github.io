@@ -348,6 +348,7 @@ let currentFolder = null;
 let currentFiles = [];
 let credentialsMap = {};
 let filesMap = {};
+let audioElement = null; // for jingle
 
 if (typeof window.TERMINAL_DATA !== 'undefined') {
   credentialsMap = window.TERMINAL_DATA.credentials || {};
@@ -362,7 +363,7 @@ const promptLabel = document.getElementById('prompt-label');
 const imagePanel = document.getElementById('image-panel');
 const credBadge = document.getElementById('cred-badge');
 
-// ─── CLOCK (shows real system time immediately) ───────────────────────────
+// ─── CLOCK (real system time) ─────────────────────────────────────────────
 function updateClock() {
   const now = new Date();
   const t = [now.getHours(), now.getMinutes(), now.getSeconds()]
@@ -498,7 +499,9 @@ async function loadFileContent(filename) {
 async function checkNotifications(folder) {
   try {
     const response = await fetch(`${folder}/NOTIFICATIONS.txt`);
-    if (!response.ok) return { count: 0, lines: [] };
+    if (!response.ok) {
+      return { count: 0, notifications: [] };
+    }
     const content = await response.text();
     const lines = content.split(/\r?\n/);
     const newNotifications = [];
@@ -522,7 +525,21 @@ async function notifyUserOnLogin() {
   }
 }
 
-// ─── COMMANDS (added NOTIFY) ──────────────────────────────────────────────
+// ─── PLAY JINGLE (once) after login ───────────────────────────────────────
+function playJingle() {
+  if (audioElement) {
+    audioElement.pause();
+    audioElement = null;
+  }
+  audioElement = new Audio('JINGLE.ogg');
+  audioElement.loop = false;
+  audioElement.play().catch(e => {
+    console.warn("Jingle autoplay blocked:", e);
+    print("[!] Could not play JINGLE.ogg – browser may require user interaction first.", 'error');
+  });
+}
+
+// ─── COMMANDS (added OPEN) ─────────────────────────────────────────────────
 const commands = {
   help: async () => {
     printBlank();
@@ -530,8 +547,9 @@ const commands = {
     printDivider();
     print('  HELP              — Show this help screen', 'info');
     print('  DIR               — List files in current folder', 'info');
-    print('  READ <file>       — Display a file', 'info');
+    print('  READ <file>       — Display a .txt file', 'info');
     print('  TYPE <file>       — Alias for READ', 'info');
+    print('  OPEN <file>       — Open any file (image, audio, video) in a new tab', 'info');
     print('  NOTIFY            — Display unread notifications', 'info');
     print('  CLS               — Clear screen', 'info');
     print('  ECHO <text>       — Print text', 'info');
@@ -601,6 +619,23 @@ const commands = {
     }
   },
 
+  // NEW: OPEN command – opens any file from current folder in a new tab
+  open: async (args) => {
+    if (!args || args.length === 0) {
+      print('Syntax: OPEN <filename>', 'error');
+      return;
+    }
+    let name = args.join(' ').trim();
+    // No automatic extension addition – user must provide full filename
+    // Check if file exists in current folder? We don't have a list of non-txt files.
+    // Instead, we attempt to open and if it fails, show error.
+    const url = `${currentFolder}/${encodeURIComponent(name)}`;
+    // Open in new tab
+    window.open(url, '_blank');
+    print(`Opening ${name} in a new tab...`, 'system');
+    printBlank();
+  },
+
   cls: async () => {
     output.innerHTML = '';
     clearImagePanel();
@@ -635,7 +670,6 @@ Multi‑user credential system
     }
   },
 
-  // New NOTIFY command
   notify: async () => {
     const { count, notifications } = await checkNotifications(currentFolder);
     if (count === 0) {
@@ -668,7 +702,6 @@ Multi‑user credential system
         credBadge.textContent = `🔑 ${code}`;
         print(`Access granted. Now in folder: ${currentFolder}`, 'system');
         printBlank();
-        // Check notifications for the new folder
         await notifyUserOnLogin();
       } else {
         print(`Error: Folder '${newFolder}' has no file list.`, 'error');
@@ -693,7 +726,7 @@ function showCredentialModal() {
         <p>INPUT CREDENTIAL CODE</p>
         <input type="text" id="cred-input" autocomplete="off" autofocus />
         <br />
-        <button id="cred-submit"> AUTHENTICATE </button>
+        <button id="cred-submit">AUTHENTICATE</button>
       </div>
     `;
     document.body.appendChild(modal);
@@ -764,8 +797,6 @@ async function boot() {
   input.disabled = false;
   input.focus();
 
-  // Check for notifications immediately after login (before boot messages? Better after)
-  // We'll call it after the welcome message.
   const logoText = await fetchExternalFile('LOGO.txt', FALLBACK_LOGO);
   const osText = await fetchExternalFile('OS.txt', FALLBACK_OS);
 
@@ -794,8 +825,10 @@ async function boot() {
   print('  Type HELP for available commands.', 'system');
   printBlank();
 
-  // Finally, show any notifications
   await notifyUserOnLogin();
+
+  // Play the jingle after everything (including notifications)
+  playJingle();
 }
 
 // ─── INPUT HANDLER (unchanged) ────────────────────────────────────────────
