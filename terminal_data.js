@@ -2,15 +2,22 @@
 window.TERMINAL_DATA = { 
   credentials: { 
     "CODE01": "data" 
-    ,"CODE02": "SCHMITZ" 
+    ,"CODE02": "REBECCA" 
+    ,"CODE03": "SCHMITZ" 
   }, 
   files: { 
     "data": [ 
-        "test1.txt" 
+        "NOTIFICATIONS.txt" 
+        ,"test1.txt" 
         ,"welcome.txt" 
     ] 
+    ,"REBECCA": [ 
+        "NOTIFICATIONS.txt" 
+        ,"sch.txt" 
+    ] 
     ,"SCHMITZ": [ 
-        "sch.txt" 
+        "NOTIFICATIONS.txt" 
+        ,"sch.txt" 
     ] 
   } 
 }; 
