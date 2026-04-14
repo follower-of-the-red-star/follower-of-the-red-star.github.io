@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>TERMINUS v2.3 — Secure Terminal</title>
   <style>
+    /* === Your existing CSS – unchanged === */
     @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -310,12 +311,11 @@
 
 <script>
 // ─── GLOBALS ───────────────────────────────────────────────────────────────
-let currentFolder = null;      // e.g., "shared", "agent_rees"
-let currentFiles = [];         // list of .txt files in that folder
-let credentialsMap = {};       // code -> folder
-let filesMap = {};             // folder -> [file list]
+let currentFolder = null;
+let currentFiles = [];
+let credentialsMap = {};
+let filesMap = {};
 
-// Load data from terminal_data.js (must be loaded before this script)
 if (typeof window.TERMINAL_DATA !== 'undefined') {
   credentialsMap = window.TERMINAL_DATA.credentials || {};
   filesMap = window.TERMINAL_DATA.files || {};
@@ -397,7 +397,7 @@ async function loadFileContent(filename) {
   }
 }
 
-// ─── COMMANDS (all use currentFolder and currentFiles) ────────────────────
+// ─── COMMANDS (unchanged) ─────────────────────────────────────────────────
 const commands = {
   help: async () => {
     printBlank();
@@ -538,7 +538,7 @@ function showCredentialModal() {
     const submitBtn = modal.querySelector('#cred-submit');
     const handler = () => {
       let code = inputField.value.trim().toUpperCase();
-      if (code === '') code = 'SHARED'; // default
+      if (code === '') code = 'SHARED';
       if (credentialsMap[code]) {
         const folder = credentialsMap[code];
         if (filesMap[folder]) {
@@ -561,46 +561,84 @@ function showCredentialModal() {
   });
 }
 
-// ─── BOOT SEQUENCE ─────────────────────────────────────────────────────────
+// ─── LOAD EXTERNAL FILES (LOGO.html and OS.html) ──────────────────────────
+async function fetchExternalFile(url, fallbackContent) {
+  try {
+    const response = await fetch(url);
+    if (response.ok) {
+      return await response.text();
+    } else {
+      throw new Error(`HTTP ${response.status}`);
+    }
+  } catch (e) {
+    console.warn(`Could not load ${url}, using fallback.`);
+    return fallbackContent;
+  }
+}
+
+// Fallback logo (the same as before, but we'll keep it simple)
+const FALLBACK_LOGO = `
+                                     __   ______    ______  
+                                    ╱  │ ╱      ╲  ╱      ╲ 
+  ______   __    __   ______    ____$$ │╱$$$$$$  │╱$$$$$$  │
+ ╱      ╲ ╱  │  ╱  │ ╱      ╲  ╱    $$ │$$ │  $$ │$$ ╲__$$╱ 
+╱$$$$$$  │$$ │  $$ │ $$$$$$  │╱$$$$$$$ │$$ │  $$ │$$      ╲ 
+$$ │  $$ │$$ │  $$ │ ╱    $$ │$$ │  $$ │$$ │  $$ │ $$$$$$  │
+$$ ╲__$$ │$$ ╲__$$ │╱$$$$$$$ │$$ ╲__$$ │$$ ╲__$$ │╱  ╲__$$ │
+$$    $$ │$$    $$╱ $$    $$ │$$    $$ │$$    $$╱ $$    $$╱ 
+ $$$$$$$ │ $$$$$$╱   $$$$$$$╱  $$$$$$$╱  $$$$$$╱   $$$$$$╱  
+      $$ │                                                  
+      $$ │                                                  
+      $$╱
+`;
+
+const FALLBACK_OS = `TERMINUS BIOS v2.3  (C) 1988 OBSCURA SYSTEMS INC.
+Memory Test: 640K OK
+Loading TERMINUS.SYS ...
+Mounting secure partition:`;
+
+// ─── BOOT SEQUENCE (using external files) ──────────────────────────────────
 async function boot() {
-  // Wait for user to enter credentials
+  // Wait for credentials
   await showCredentialModal();
 
-  // Now enable the terminal
   input.disabled = false;
   input.focus();
 
-  // Boot messages
-  print('TERMINUS BIOS v2.3  (C) 1988 OBSCURA SYSTEMS INC.', 'system');
+  // Fetch logo and OS text
+  const logoText = await fetchExternalFile('LOGO.html', FALLBACK_LOGO);
+  const osText = await fetchExternalFile('OS.html', FALLBACK_OS);
+
+  // Print OS lines (split by newline)
+  const osLines = osText.split(/\r?\n/).filter(line => line.trim().length > 0);
+  for (let i = 0; i < osLines.length; i++) {
+    let line = osLines[i];
+    // If this is the last line that contains "Mounting secure partition:", append folder name
+    if (i === osLines.length - 1 && line.includes('Mounting secure partition')) {
+      line = `${line} ${currentFolder}`;
+    }
+    print(line, 'system');
+    await new Promise(r => setTimeout(r, 150 + Math.random() * 100));
+  }
   await new Promise(r => setTimeout(r, 200));
-  print('Memory Test: 640K OK', 'system');
-  await new Promise(r => setTimeout(r, 150));
-  print('Loading TERMINUS.SYS ...', 'system');
-  await new Promise(r => setTimeout(r, 180));
-  print(`Mounting secure partition: ${currentFolder} ...`, 'system');
-  await new Promise(r => setTimeout(r, 120));
-  print('', 'blank');
-  printDivider('═');
-  print('                                     __   ______    ______  ', 'header-line');
-  print('                                    ╱  │ ╱      ╲  ╱      ╲ ', 'header-line');
-  print('  ______   __    __   ______    ____$$ │╱$$$$$$  │╱$$$$$$  │', 'header-line');
-  print(' ╱      ╲ ╱  │  ╱  │ ╱      ╲  ╱    $$ │$$ │  $$ │$$ ╲__$$╱ ', 'header-line');
-  print('╱$$$$$$  │$$ │  $$ │ $$$$$$  │╱$$$$$$$ │$$ │  $$ │$$      ╲ ', 'header-line');
-  print('$$ │  $$ │$$ │  $$ │ ╱    $$ │$$ │  $$ │$$ │  $$ │ $$$$$$  │', 'header-line');
-  print('$$ ╲__$$ │$$ ╲__$$ │╱$$$$$$$ │$$ ╲__$$ │$$ ╲__$$ │╱  ╲__$$ │', 'header-line');
-  print('$$    $$ │$$    $$╱ $$    $$ │$$    $$ │$$    $$╱ $$    $$╱ ', 'header-line');
-  print(' $$$$$$$ │ $$$$$$╱   $$$$$$$╱  $$$$$$$╱  $$$$$$╱   $$$$$$╱  ', 'header-line');
-  print('      $$ │                                                  ', 'header-line');
-  print('      $$ │                                                  ', 'header-line');
-  print('      $$╱                                                   ', 'header-line');
+  printBlank();
+
+  // Print logo lines
+  const logoLines = logoText.split(/\r?\n/);
+  for (const line of logoLines) {
+    if (line.trim() === '') continue;
+    print(line, 'header-line');
+    await new Promise(r => setTimeout(r, 40 + Math.random() * 30));
+  }
+
   printDivider('═');
   printBlank();
-print(`  WELCOME, ${currentFolder}.`, 'info');
+  print(`  WELCOME, ${currentFolder}.`, 'info');
   print('  Type HELP for available commands.', 'system');
   printBlank();
 }
 
-// ─── INPUT HANDLER ─────────────────────────────────────────────────────────
+// ─── INPUT HANDLER (unchanged) ────────────────────────────────────────────
 const history = [];
 let histIdx = -1;
 
@@ -649,7 +687,6 @@ input.addEventListener('keydown', async (e) => {
 
 document.addEventListener('click', () => input.focus());
 
-// Start everything
 boot();
 </script>
 </body>
