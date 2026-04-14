@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>TERMINUS v2.3 — Secure Terminal</title>
   <style>
-    /* === Your existing CSS – unchanged === */
     @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -144,10 +143,17 @@
       display: none;
       flex-direction: column;
       align-items: center;
-      justify-content: flex-start;
+      justify-content: center;
     }
 
-    #image-panel img {
+    #image-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+    }
+
+    #image-container img {
       max-width: 100%;
       max-height: 300px;
       object-fit: contain;
@@ -156,11 +162,37 @@
       margin-bottom: 8px;
     }
 
-    #image-panel .image-caption {
+    .image-counter {
       font-size: 11px;
       color: var(--green-dim);
-      text-align: center;
-      word-break: break-all;
+      margin: 8px 0;
+    }
+
+    .image-nav {
+      display: flex;
+      gap: 12px;
+      margin-top: 8px;
+    }
+
+    .image-nav button {
+      background: transparent;
+      border: 1px solid var(--green);
+      color: var(--green);
+      font-family: monospace;
+      font-size: 16px;
+      padding: 4px 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .image-nav button:hover {
+      background: var(--green-dark);
+      border-color: var(--green-dim);
+    }
+
+    .image-nav button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
     }
 
     #output::-webkit-scrollbar { width: 6px; }
@@ -230,7 +262,6 @@
       z-index: 20;
     }
 
-    /* Modal for credential input */
     .modal {
       position: fixed;
       top: 0;
@@ -323,7 +354,6 @@ if (typeof window.TERMINAL_DATA !== 'undefined') {
   console.error("terminal_data.js not loaded. Run update_index.bat");
 }
 
-// DOM elements
 const output = document.getElementById('output');
 const input = document.getElementById('input');
 const promptLabel = document.getElementById('prompt-label');
@@ -352,38 +382,98 @@ function printDivider(char = '─', len = 58) {
   print(char.repeat(len), 'header-line');
 }
 
-function clearImage() {
+// ─── IMAGE CAROUSEL ────────────────────────────────────────────────────────
+let currentImageIndex = 0;
+let currentImageList = [];
+
+function clearImagePanel() {
   imagePanel.innerHTML = '';
   imagePanel.style.display = 'none';
+  currentImageList = [];
+  currentImageIndex = 0;
 }
 
-function showImage(url, altText = '') {
-  clearImage();
+function updateImageCarousel() {
+  if (!imagePanel || currentImageList.length === 0) return;
+  // Rebuild panel content
+  imagePanel.innerHTML = '';
+  const container = document.createElement('div');
+  container.id = 'image-container';
   const img = document.createElement('img');
-  img.src = url;
-  img.alt = altText;
+  img.src = currentImageList[currentImageIndex];
+  img.alt = `Image ${currentImageIndex+1}`;
   img.onerror = () => {
-    imagePanel.innerHTML = '<div class="error">[Image failed to load]</div>';
-    imagePanel.style.display = 'flex';
+    img.src = '';
+    img.alt = '[Failed to load]';
   };
-  const caption = document.createElement('div');
-  caption.className = 'image-caption';
-  caption.textContent = url.length > 60 ? url.substring(0,57)+'...' : url;
-  imagePanel.appendChild(img);
-  imagePanel.appendChild(caption);
+  const counter = document.createElement('div');
+  counter.className = 'image-counter';
+  counter.textContent = `${currentImageIndex+1} / ${currentImageList.length}`;
+  const nav = document.createElement('div');
+  nav.className = 'image-nav';
+  const prevBtn = document.createElement('button');
+  prevBtn.textContent = '◀';
+  prevBtn.disabled = (currentImageList.length <= 1);
+  prevBtn.onclick = () => {
+    if (currentImageList.length === 0) return;
+    currentImageIndex = (currentImageIndex - 1 + currentImageList.length) % currentImageList.length;
+    updateImageCarousel();
+  };
+  const nextBtn = document.createElement('button');
+  nextBtn.textContent = '▶';
+  nextBtn.disabled = (currentImageList.length <= 1);
+  nextBtn.onclick = () => {
+    if (currentImageList.length === 0) return;
+    currentImageIndex = (currentImageIndex + 1) % currentImageList.length;
+    updateImageCarousel();
+  };
+  nav.appendChild(prevBtn);
+  nav.appendChild(nextBtn);
+  container.appendChild(img);
+  container.appendChild(counter);
+  container.appendChild(nav);
+  imagePanel.appendChild(container);
   imagePanel.style.display = 'flex';
 }
 
-function extractImageUrl(firstLine) {
-  const line = firstLine.trim();
-  const mdMatch = line.match(/!\[.*?\]\((https?:\/\/[^\s)]+)\)/);
-  if (mdMatch) return mdMatch[1];
-  if (line.toLowerCase().startsWith('img:')) return line.substring(4).trim();
-  const urlMatch = line.match(/^(https?:\/\/[^\s]+\.(jpg|jpeg|png|gif|webp)(\?.*)?)$/i);
-  if (urlMatch) return urlMatch[1];
-  return null;
+function showImageCarousel(imageUrls) {
+  if (!imageUrls || imageUrls.length === 0) {
+    clearImagePanel();
+    return;
+  }
+  currentImageList = imageUrls;
+  currentImageIndex = 0;
+  updateImageCarousel();
 }
 
+// ─── PARSE FILE: extract images (lines until first empty line) ────────────
+function parseFileContent(content) {
+  const lines = content.split(/\r?\n/);
+  const imageUrls = [];
+  let i = 0;
+  // Collect image URLs from top until we hit an empty line
+  while (i < lines.length) {
+    const line = lines[i].trim();
+    if (line === '') {
+      i++; // skip the empty line separator
+      break;
+    }
+    // Check if line looks like an image URL
+    const urlMatch = line.match(/^(https?:\/\/[^\s]+\.(jpg|jpeg|png|gif|webp)(\?.*)?)$/i);
+    if (urlMatch) {
+      imageUrls.push(urlMatch[1]);
+    } else {
+      // Not a URL – stop collecting images (treat as part of text)
+      break;
+    }
+    i++;
+  }
+  // The rest of the lines are the main text (if any)
+  const textLines = lines.slice(i);
+  return { imageUrls, textLines };
+}
+
+// ─── FILE LOADER (unchanged) ──────────────────────────────────────────────
 async function loadFileContent(filename) {
   try {
     const response = await fetch(`${currentFolder}/${filename}`);
@@ -397,7 +487,7 @@ async function loadFileContent(filename) {
   }
 }
 
-// ─── COMMANDS (unchanged) ─────────────────────────────────────────────────
+// ─── COMMANDS (only 'read' modified) ──────────────────────────────────────
 const commands = {
   help: async () => {
     printBlank();
@@ -452,34 +542,34 @@ const commands = {
     print(`Loading ${name} ...`, 'system');
     const result = await loadFileContent(name);
     if (result.success) {
-      const lines = result.content.split(/\r?\n/);
-      let imageUrl = null;
-      let contentLines = lines;
-      if (lines.length > 0) {
-        imageUrl = extractImageUrl(lines[0]);
-        if (imageUrl) {
-          contentLines = lines.slice(1);
-          if (contentLines.length > 0 && contentLines[0].trim() === '')
-            contentLines = contentLines.slice(1);
-        }
+      const { imageUrls, textLines } = parseFileContent(result.content);
+      // Show carousel if any images found
+      if (imageUrls.length > 0) {
+        showImageCarousel(imageUrls);
+      } else {
+        clearImagePanel();
       }
-      if (imageUrl) showImage(imageUrl, name);
-      else clearImage();
+      // Display text content
       printBlank();
       printDivider('─');
-      if (contentLines.length === 0 && imageUrl) print('[Image only – no text]', 'system');
-      else if (contentLines.length === 0 && !imageUrl) print('[Empty file]', 'system');
-      else await printSlow(contentLines, 'file-content', 12);
+      if (textLines.length === 0 && imageUrls.length === 0) {
+        print('[Empty file]', 'system');
+      } else if (textLines.length === 0 && imageUrls.length > 0) {
+        print('[Image(s) only – no additional text]', 'system');
+      } else {
+        await printSlow(textLines, 'file-content', 12);
+      }
       printDivider('─');
       printBlank();
     } else {
       print(`Error: ${result.error}`, 'error');
+      clearImagePanel();
     }
   },
 
   cls: async () => {
     output.innerHTML = '';
-    clearImage();
+    clearImagePanel();
   },
 
   echo: async (args) => {
@@ -488,7 +578,7 @@ const commands = {
 
   ver: async () => {
     printBlank();
-    print('quadOS SMT 3.1 - Secure Multi-User Terminal', 'header-line');
+    print('TERMINUS v2.3 — Secure Campaign Terminal', 'header-line');
     print('Multi‑user credential system', 'system');
     printBlank();
   },
@@ -520,7 +610,7 @@ commands.type = commands.read;
 commands.clear = commands.cls;
 commands.ls = commands.dir;
 
-// ─── CREDENTIAL MODAL ──────────────────────────────────────────────────────
+// ─── CREDENTIAL MODAL (unchanged) ─────────────────────────────────────────
 function showCredentialModal() {
   return new Promise((resolve) => {
     const modal = document.createElement('div');
@@ -561,7 +651,7 @@ function showCredentialModal() {
   });
 }
 
-// ─── LOAD EXTERNAL FILES (LOGO.html and OS.html) ──────────────────────────
+// ─── LOAD EXTERNAL LOGO & OS (unchanged) ───────────────────────────────────
 async function fetchExternalFile(url, fallbackContent) {
   try {
     const response = await fetch(url);
@@ -576,7 +666,6 @@ async function fetchExternalFile(url, fallbackContent) {
   }
 }
 
-// Fallback logo (the same as before, but we'll keep it simple)
 const FALLBACK_LOGO = `
                                      __   ______    ______  
                                     ╱  │ ╱      ╲  ╱      ╲ 
@@ -597,23 +686,17 @@ Memory Test: 640K OK
 Loading TERMINUS.SYS ...
 Mounting secure partition:`;
 
-// ─── BOOT SEQUENCE (using external files) ──────────────────────────────────
 async function boot() {
-  // Wait for credentials
   await showCredentialModal();
-
   input.disabled = false;
   input.focus();
 
-  // Fetch logo and OS text
   const logoText = await fetchExternalFile('LOGO.html', FALLBACK_LOGO);
   const osText = await fetchExternalFile('OS.html', FALLBACK_OS);
 
-  // Print OS lines (split by newline)
   const osLines = osText.split(/\r?\n/).filter(line => line.trim().length > 0);
   for (let i = 0; i < osLines.length; i++) {
     let line = osLines[i];
-    // If this is the last line that contains "Mounting secure partition:", append folder name
     if (i === osLines.length - 1 && line.includes('Mounting secure partition')) {
       line = `${line} ${currentFolder}`;
     }
@@ -623,7 +706,6 @@ async function boot() {
   await new Promise(r => setTimeout(r, 200));
   printBlank();
 
-  // Print logo lines
   const logoLines = logoText.split(/\r?\n/);
   for (const line of logoLines) {
     if (line.trim() === '') continue;
