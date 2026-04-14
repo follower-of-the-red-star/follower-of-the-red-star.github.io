@@ -324,7 +324,7 @@
   <div id="monitor">
     <div id="screen">
       <div id="header">
-        <span class="title">◈ TERMINUS v2.3</span>
+        <span class="title">TERMINUS v2.3</span>
         <span id="clock">--:--:--</span>
         <span id="cred-badge"></span>
         <span>SECURE TERMINAL</span>
@@ -334,7 +334,7 @@
         <div id="image-panel"></div>
       </div>
       <div id="input-row">
-        <span id="prompt-label">C:\&gt;</span>
+        <span id="prompt-label">C:\></span>
         <input id="input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" disabled />
       </div>
     </div>
@@ -343,6 +343,11 @@
 </div>
 
 <script>
+// ============================================================================
+// DEBUG MODE – set to true to see extra messages, false for normal operation
+// ============================================================================
+const DEBUG = false;
+
 // ─── GLOBALS ───────────────────────────────────────────────────────────────
 let currentFolder = null;
 let currentFiles = [];
@@ -353,7 +358,7 @@ let audioElement = null; // for jingle
 if (typeof window.TERMINAL_DATA !== 'undefined') {
   credentialsMap = window.TERMINAL_DATA.credentials || {};
   filesMap = window.TERMINAL_DATA.files || {};
-} else {
+} else if (DEBUG) {
   console.error("terminal_data.js not loaded. Run update_index.bat");
 }
 
@@ -391,8 +396,14 @@ async function printSlow(lines, cls = '', delayBase = 18) {
   }
 }
 
-function printDivider(char = '─', len = 58) {
+function printDivider(char = '-', len = 58) {
   print(char.repeat(len), 'header-line');
+}
+
+function debugPrint(msg) {
+  if (DEBUG) {
+    print(`[DEBUG] ${msg}`, 'system');
+  }
 }
 
 // ─── IMAGE CAROUSEL (unchanged) ───────────────────────────────────────────
@@ -424,7 +435,7 @@ function updateImageCarousel() {
   const nav = document.createElement('div');
   nav.className = 'image-nav';
   const prevBtn = document.createElement('button');
-  prevBtn.textContent = '◀';
+  prevBtn.textContent = '<';
   prevBtn.disabled = (currentImageList.length <= 1);
   prevBtn.onclick = () => {
     if (currentImageList.length === 0) return;
@@ -432,7 +443,7 @@ function updateImageCarousel() {
     updateImageCarousel();
   };
   const nextBtn = document.createElement('button');
-  nextBtn.textContent = '▶';
+  nextBtn.textContent = '>';
   nextBtn.disabled = (currentImageList.length <= 1);
   nextBtn.onclick = () => {
     if (currentImageList.length === 0) return;
@@ -521,13 +532,21 @@ async function notifyUserOnLogin() {
   const { count, notifications } = await checkNotifications(currentFolder);
   if (count > 0) {
     print(`[!] You have ${count} new notification(s). Type NOTIFY to read them.`, 'notification');
-    printBlank();
+    // Play NOTIFY.ogg if it exists
+    const notifyAudio = new Audio('NOTIFY.ogg');
+    notifyAudio.play().catch(e => {
+      debugPrint(`NOTIFY.ogg play failed: ${e.message}`);
+    });
+    debugPrint(`Playing NOTIFY.ogg (${count} notifications)`);
+  } else {
+    print('No unread notifications.', 'system');
   }
+  printBlank();
 }
 
-// ─── PLAY JINGLE (with terminal feedback) ─────────────────────────────────
+// ─── PLAY JINGLE (with terminal feedback controlled by DEBUG) ─────────────
 function playJingle() {
-  print("[*] Attempting to play JINGLE.ogg...", 'system');
+  debugPrint("Attempting to play JINGLE.ogg...");
   if (audioElement) {
     audioElement.pause();
     audioElement = null;
@@ -535,19 +554,20 @@ function playJingle() {
   audioElement = new Audio('JINGLE.ogg');
   audioElement.loop = false;
   
-  // Optional: add an event listener to confirm when it actually starts
-  audioElement.addEventListener('canplaythrough', () => {
-    print("[✓] JINGLE.ogg loaded and ready to play.", 'system');
-  });
-  audioElement.addEventListener('play', () => {
-    print("[♪] Jingle is now playing.", 'system');
-  });
-  audioElement.addEventListener('error', (e) => {
-    print(`[✗] Failed to play JINGLE.ogg: ${audioElement.error ? audioElement.error.message : 'File not found or unsupported format'}`, 'error');
-  });
+  if (DEBUG) {
+    audioElement.addEventListener('canplaythrough', () => {
+      debugPrint("JINGLE.ogg loaded and ready to play.");
+    });
+    audioElement.addEventListener('play', () => {
+      debugPrint("Jingle is now playing.");
+    });
+    audioElement.addEventListener('error', (e) => {
+      debugPrint(`Failed to play JINGLE.ogg: ${audioElement.error ? audioElement.error.message : 'File not found or unsupported format'}`);
+    });
+  }
   
   audioElement.play().catch(e => {
-    print(`[!] Could not play JINGLE.ogg – ${e.message}. Browsers often block autoplay until user interaction.`, 'error');
+    debugPrint(`Could not play JINGLE.ogg – ${e.message}. Browsers often block autoplay until user interaction.`);
   });
 }
 
@@ -556,17 +576,17 @@ const commands = {
   help: async () => {
     printBlank();
     print('AVAILABLE COMMANDS', 'header-line');
-    printDivider();
-    print('  HELP              — Show this help screen', 'info');
-    print('  DIR               — List files in current folder', 'info');
-    print('  READ <file>       — Display a .txt file', 'info');
-    print('  TYPE <file>       — Alias for READ', 'info');
-    print('  OPEN <file>       — Open any file (image, audio, video) in a new tab', 'info');
-    print('  NOTIFY            — Display unread notifications', 'info');
-    print('  CLS               — Clear screen', 'info');
-    print('  ECHO <text>       — Print text', 'info');
-    print('  VER               — Version info (loads VER.txt)', 'info');
-    print('  LOGIN <code>      — Switch to another credential', 'info');
+    printDivider('-');
+    print('  HELP              - Show this help screen', 'info');
+    print('  DIR               - List files in current folder', 'info');
+    print('  READ <file>       - Display a .txt file', 'info');
+    print('  TYPE <file>       - Alias for READ', 'info');
+    print('  OPEN <file>       - Open any file (image, audio, video) in a new tab', 'info');
+    print('  NOTIFY            - Display unread notifications', 'info');
+    print('  CLS               - Clear screen', 'info');
+    print('  ECHO <text>       - Print text', 'info');
+    print('  VER               - Version info (loads VER.txt)', 'info');
+    print('  LOGIN <code>      - Switch to another credential', 'info');
     printBlank();
     print(`Current folder: ${currentFolder}`, 'system');
     printBlank();
@@ -577,7 +597,7 @@ const commands = {
     print(` Volume in drive C is TERMINUS (${currentFolder})`, 'system');
     print(` Directory of C:\\${currentFolder}`, 'system');
     printBlank();
-    printDivider();
+    printDivider('-');
     if (currentFiles.length === 0) {
       print('  (no .txt files found in this folder)', 'error');
     } else {
@@ -588,7 +608,7 @@ const commands = {
         print(`  ${f.padEnd(24)}  <TXT>    ${dateStr}`, 'file-content');
       }
     }
-    printDivider();
+    printDivider('-');
     print(`  ${currentFiles.length} file(s)`, 'system');
     printBlank();
   },
@@ -615,15 +635,15 @@ const commands = {
         clearImagePanel();
       }
       printBlank();
-      printDivider('─');
+      printDivider('-');
       if (textLines.length === 0 && imageUrls.length === 0) {
         print('[Empty file]', 'system');
       } else if (textLines.length === 0 && imageUrls.length > 0) {
-        print('[Image(s) only – no additional text]', 'system');
+        print('[Image(s) only - no additional text]', 'system');
       } else {
         await printSlow(textLines, 'file-content', 12);
       }
-      printDivider('─');
+      printDivider('-');
       printBlank();
     } else {
       print(`Error: ${result.error}`, 'error');
@@ -631,18 +651,13 @@ const commands = {
     }
   },
 
-  // NEW: OPEN command – opens any file from current folder in a new tab
   open: async (args) => {
     if (!args || args.length === 0) {
       print('Syntax: OPEN <filename>', 'error');
       return;
     }
     let name = args.join(' ').trim();
-    // No automatic extension addition – user must provide full filename
-    // Check if file exists in current folder? We don't have a list of non-txt files.
-    // Instead, we attempt to open and if it fails, show error.
     const url = `${currentFolder}/${encodeURIComponent(name)}`;
-    // Open in new tab
     window.open(url, '_blank');
     print(`Opening ${name} in a new tab...`, 'system');
     printBlank();
@@ -658,9 +673,9 @@ const commands = {
   },
 
   ver: async () => {
-    const fallbackVersion = `TERMINUS v2.3 — Secure Campaign Terminal
-Multi‑user credential system
-© 1988 OBSCURA SYSTEMS INC.`;
+    const fallbackVersion = `TERMINUS v2.3 - Secure Campaign Terminal
+Multi-user credential system
+(c) 1988 OBSCURA SYSTEMS INC.`;
     try {
       const response = await fetch('VER.txt');
       if (response.ok) {
@@ -678,7 +693,7 @@ Multi‑user credential system
       printBlank();
       print(fallbackVersion, 'header-line');
       printBlank();
-      print('(VER.txt not found – using built‑in version info)', 'system');
+      print('(VER.txt not found - using built-in version info)', 'system');
     }
   },
 
@@ -691,11 +706,11 @@ Multi‑user credential system
     }
     printBlank();
     print('UNREAD NOTIFICATIONS', 'header-line');
-    printDivider('─');
+    printDivider('-');
     for (const n of notifications) {
       print(`[${n.index}] ${n.text}`, 'notification');
     }
-    printDivider('─');
+    printDivider('-');
     print(`Total: ${count} unread.`, 'system');
     printBlank();
   },
@@ -711,7 +726,7 @@ Multi‑user credential system
       if (filesMap[newFolder]) {
         currentFolder = newFolder;
         currentFiles = filesMap[newFolder];
-        credBadge.textContent = `🔑 ${code}`;
+        credBadge.textContent = `[${code}]`;
         print(`Access granted. Now in folder: ${currentFolder}`, 'system');
         printBlank();
         await notifyUserOnLogin();
@@ -752,7 +767,7 @@ function showCredentialModal() {
         if (filesMap[folder]) {
           currentFolder = folder;
           currentFiles = filesMap[folder];
-          credBadge.textContent = `🔑 ${code}`;
+          credBadge.textContent = `[${code}]`;
           modal.remove();
           resolve(true);
         } else {
@@ -779,24 +794,24 @@ async function fetchExternalFile(url, fallbackContent) {
       throw new Error(`HTTP ${response.status}`);
     }
   } catch (e) {
-    console.warn(`Could not load ${url}, using fallback.`);
+    debugPrint(`Could not load ${url}, using fallback.`);
     return fallbackContent;
   }
 }
 
 const FALLBACK_LOGO = `
                                      __   ______    ______  
-                                    ╱  │ ╱      ╲  ╱      ╲ 
-  ______   __    __   ______    ____$$ │╱$$$$$$  │╱$$$$$$  │
- ╱      ╲ ╱  │  ╱  │ ╱      ╲  ╱    $$ │$$ │  $$ │$$ ╲__$$╱ 
-╱$$$$$$  │$$ │  $$ │ $$$$$$  │╱$$$$$$$ │$$ │  $$ │$$      ╲ 
-$$ │  $$ │$$ │  $$ │ ╱    $$ │$$ │  $$ │$$ │  $$ │ $$$$$$  │
-$$ ╲__$$ │$$ ╲__$$ │╱$$$$$$$ │$$ ╲__$$ │$$ ╲__$$ │╱  ╲__$$ │
-$$    $$ │$$    $$╱ $$    $$ │$$    $$ │$$    $$╱ $$    $$╱ 
- $$$$$$$ │ $$$$$$╱   $$$$$$$╱  $$$$$$$╱  $$$$$$╱   $$$$$$╱  
-      $$ │                                                  
-      $$ │                                                  
-      $$╱
+                                    /  | /      \  /      \ 
+  ______   __    __   ______    ____$$ |/$$$$$$  |/$$$$$$  |
+ /      \ /  |  /  | /      \  /    $$ |$$ |  $$ |$$ \__$$/ 
+/$$$$$$  |$$ |  $$ | $$$$$$  |/$$$$$$$ |$$ |  $$ |$$      \ 
+$$ |  $$ |$$ |  $$ | /    $$ |$$ |  $$ |$$ |  $$ | $$$$$$  |
+$$ \__$$ |$$ \__$$ |/$$$$$$$ |$$ \__$$ |$$ \__$$ |/  \__$$ |
+$$    $$ |$$    $$/ $$    $$ |$$    $$ |$$    $$/ $$    $$/ 
+ $$$$$$$ | $$$$$$/   $$$$$$$/  $$$$$$$/  $$$$$$/   $$$$$$/  
+      $$ |                                                  
+      $$ |                                                  
+      $$/                                                  
 `;
 
 const FALLBACK_OS = `TERMINUS BIOS v2.3  (C) 1988 OBSCURA SYSTEMS INC.
@@ -831,7 +846,7 @@ async function boot() {
     await new Promise(r => setTimeout(r, 40 + Math.random() * 30));
   }
 
-  printDivider('═');
+  printDivider('=');
   printBlank();
   print(`  WELCOME, ${currentFolder}.`, 'info');
   print('  Type HELP for available commands.', 'system');
@@ -839,7 +854,7 @@ async function boot() {
 
   await notifyUserOnLogin();
 
-  // Play the jingle after everything (including notifications)
+  // Play the jingle after everything
   playJingle();
 }
 
